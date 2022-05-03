@@ -1,6 +1,8 @@
 package com.bookrepo.controller;
 
 import com.bookrepo.Application;
+import com.bookrepo.controller.dto.LoanRequest;
+import com.bookrepo.controller.dto.ReturnRequest;
 import com.bookrepo.exception.BookNotFoundException;
 import com.bookrepo.exception.MaxLoansException;
 import com.bookrepo.exception.MemberNotFoundException;
@@ -15,10 +17,12 @@ import com.bookrepo.repo.IBookRepository;
 import com.bookrepo.repo.IMemberRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import static org.junit.Assert.assertEquals;
@@ -36,9 +40,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.util.Date;
+import java.time.LocalDateTime;
 import java.util.List;
+
+import static org.hamcrest.Matchers.*;
 
 @RunWith(SpringRunner.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, classes = Application.class)
@@ -76,8 +81,11 @@ public class BookRepoControllerTest {
         createBook(Long.valueOf(2),  "The godfather Pt II",  author);
         Member member = createMember("test@test.com");
 
-        mvc.perform(post("/api/v1/members/test@test.com/books/12345")
-                .contentType(MediaType.APPLICATION_JSON))
+        LoanRequest request = new LoanRequest(Long.valueOf(12345), member.getEmail(), LocalDateTime.now());
+
+        mvc.perform(post("/api/v1/bookloans")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(request.toString()) )
             .andDo(print())
             .andExpect(status().isCreated())
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
@@ -89,15 +97,18 @@ public class BookRepoControllerTest {
     }
 
     @Test
-    public void givenBookLoaned_whenReturned_thenUpdateBookLoan() throws Exception {
+    public void givenBookLoan_whenReturned_thenUpdateBookLoan() throws Exception {
         Author author = createAuthor("Mario",  "Puzo");
         Book book = createBook(Long.valueOf(12345),  "The godfather",  author);
         Member member = createMember("test@test.com");
 
         BookLoan initialBookLoan = createBookLoan(book, member);
 
-        mvc.perform(put("/api/v1/members/test@test.com/books/12345")
-                .contentType(MediaType.APPLICATION_JSON))
+        ReturnRequest request = new ReturnRequest(initialBookLoan.getId(), LocalDateTime.now());
+
+        mvc.perform(patch("/api/v1/bookloans/" + initialBookLoan.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(request.toString()) )
             .andDo(print())
             .andExpect(status().isOk())
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
@@ -123,8 +134,11 @@ public class BookRepoControllerTest {
         createBookLoan(book2, member);
         createBookLoan(book3, member);
 
-        mvc.perform(post("/api/v1/members/test@test.com/books/4")
-                .contentType(MediaType.APPLICATION_JSON))
+        LoanRequest request = new LoanRequest(Long.valueOf(4), member.getEmail(), LocalDateTime.now());
+
+        mvc.perform(post("/api/v1/bookloans")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(request.toString()) )
             .andDo(print())
             .andExpect(status().isInternalServerError())
             .andExpect(result -> assertTrue(result.getResolvedException() instanceof MaxLoansException))
@@ -141,10 +155,13 @@ public class BookRepoControllerTest {
         Book book1 = createBook(Long.valueOf(12345),  "The godfather",  author);
         createBook(Long.valueOf(2),  "The godfather Pt II",  author);
 
-        createBookLoan(book1, member, java.util.Date.from(LocalDate.now().minusDays(10).atStartOfDay().atZone(ZoneId.systemDefault()).toInstant()));
+        createBookLoan(book1, member, LocalDate.now().minusDays(10).atStartOfDay());
 
-        mvc.perform(post("/api/v1/members/test@test.com/books/2")
-                .contentType(MediaType.APPLICATION_JSON))
+        LoanRequest request = new LoanRequest(Long.valueOf(2), member.getEmail(), LocalDateTime.now());
+
+        mvc.perform(post("/api/v1/bookloans")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(request.toString()) )
             .andDo(print())
             .andExpect(status().isInternalServerError())
             .andExpect(result -> assertTrue(result.getResolvedException() instanceof OverdueLoanException))
@@ -159,8 +176,11 @@ public class BookRepoControllerTest {
         createBook(Long.valueOf(12345),  "The godfather",  author);
         Member member = createMember("test@test.com");
 
-        mvc.perform(post("/api/v1/members/test@test.com/books/1111")
-                .contentType(MediaType.APPLICATION_JSON))
+        LoanRequest request = new LoanRequest(Long.valueOf(1111), member.getEmail(), LocalDateTime.now());
+
+        mvc.perform(post("/api/v1/bookloans")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(request.toString()) )
             .andDo(print())
             .andExpect(result -> assertTrue(result.getResolvedException() instanceof BookNotFoundException))
             .andExpect(result -> assertEquals("Could not find book with ID 1111.", result.getResolvedException().getMessage().trim()));
@@ -174,11 +194,34 @@ public class BookRepoControllerTest {
         createBook(Long.valueOf(12345),  "The godfather",  author);
         Member member = createMember("test@test.com");
 
-        mvc.perform(post("/api/v1/members/test@invalid.com/books/12345")
-                .contentType(MediaType.APPLICATION_JSON))
+        LoanRequest request = new LoanRequest(Long.valueOf(12345), "test@invalid.com", LocalDateTime.now());
+
+        mvc.perform(post("/api/v1/bookloans")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(request.toString()) )
             .andDo(print())
             .andExpect(result -> assertTrue(result.getResolvedException() instanceof MemberNotFoundException))
             .andExpect(result -> assertEquals("Could not find member with ID test@invalid.com.", result.getResolvedException().getMessage().trim()));
+    }
+
+    @Test
+    public void given1BookOnLoan_whenGetAllLoans_thenReturn1() throws Exception {
+        Author author = createAuthor("Mario",  "Puzo");
+        Member member = createMember("test@test.com");
+        Book book1 = createBook(Long.valueOf(12345),  "The godfather",  author);
+        Book book2 = createBook(Long.valueOf(2),  "The godfather Pt II",  author);
+
+        BookLoan bookLoan = createBookLoan(book1, member, LocalDate.now().minusDays(10).atStartOfDay());
+        createBookLoan(book2, member, LocalDate.now().minusDays(10).atStartOfDay(), LocalDate.now().minusDays(5).atStartOfDay()); // it has been returned so it won't be returned
+
+        mvc.perform(get("/api/v1/bookloans")
+                .contentType(MediaType.APPLICATION_JSON))
+            .andDo(print())
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.*", hasSize(1)))
+            .andExpect(jsonPath("$[0].id").value(bookLoan.getId()));
+
+        assertThat(bookLoanRepository.findByMember(member)).hasSize(2);
     }
 
     private Book createBook(Long bookId, String bookTitle, Author author) {
@@ -195,13 +238,18 @@ public class BookRepoControllerTest {
         return createBookLoan(book, member, null);
     }
 
-    private BookLoan createBookLoan(Book book, Member member, Date loanDate) {
+    private BookLoan createBookLoan(Book book, Member member, LocalDateTime loanDate, LocalDateTime returnedDate) {
         BookLoan bookLoan = new BookLoan();
         bookLoan.setBook(book);
         bookLoan.setMember(member);
-        bookLoan.setLoanedDate(loanDate == null ? new Date() : loanDate);
+        bookLoan.setLoanedDate(loanDate == null ? LocalDateTime.now() : loanDate);
+        bookLoan.setReturnedDate(returnedDate);
 
         return bookLoanRepository.save(bookLoan);
+    }
+
+    private BookLoan createBookLoan(Book book, Member member, LocalDateTime loanDate) {
+        return createBookLoan(book, member, loanDate, null);
     }
 
     private Author createAuthor(String authorFirstName, String authorLastName) {

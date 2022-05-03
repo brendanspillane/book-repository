@@ -21,8 +21,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * TODO: add additional methods for updating authors/categories etc.
@@ -58,16 +58,10 @@ public class BookRepoService implements IBookRepoService {
      * @return
      */
     @Override
-    public BookLoan loanBook(String memberId, Long bookId) {
+    public BookLoan loanBook(String memberId, Long bookId, LocalDateTime loanedDate) {
 
-        Member member = memberRepository.findById(memberId).orElse(null);
-        if (member == null) {
-            throw new MemberNotFoundException(String.format("Could not find member with ID %s.", memberId));
-        }
-        Book book = bookRepository.findById(bookId).orElse(null);
-        if (book == null) {
-            throw new BookNotFoundException(String.format("Could not find book with ID %s.", bookId));
-        }
+        Member member = memberRepository.findById(memberId).orElseThrow(() -> new MemberNotFoundException(String.format("Could not find member with ID %s.", memberId)));
+        Book book = bookRepository.findById(bookId).orElseThrow(() -> new BookNotFoundException(String.format("Could not find book with ID %s.", bookId)));
 
         int loanedBooksCount = bookLoanRepository.countByMemberAndReturnedDateIsNull(member);
         if (loanedBooksCount >= MaxLoansPerMember) {
@@ -76,7 +70,7 @@ public class BookRepoService implements IBookRepoService {
 
         int overdueBooksCount = bookLoanRepository.countByMemberAndReturnedDateIsNullAndLoanedDateLessThan(
             member,
-            java.util.Date.from(LocalDate.now().minusDays(PermittedLoanPeriodInDays).atStartOfDay().atZone(ZoneId.systemDefault()).toInstant())
+            LocalDate.now().minusDays(PermittedLoanPeriodInDays).atStartOfDay()
         );
 
         if (overdueBooksCount != 0) {
@@ -87,34 +81,41 @@ public class BookRepoService implements IBookRepoService {
         bookLoan.setBook(book);
         bookLoan.setMember(member);
 
-        bookLoan.setLoanedDate(new Date());
+        bookLoan.setLoanedDate(loanedDate);
         return bookLoanRepository.save(bookLoan);
     }
 
     /**
      *
-     * @param memberId
-     * @param bookId
+     * @param bookLoanId
+     * @param returnDate
      * @return
      */
     @Override
-    public BookLoan returnBook(String memberId, Long bookId) {
+    public BookLoan returnBook(Long bookLoanId, LocalDateTime returnDate) {
 
-        Member member = memberRepository.findById(memberId).orElse(null);
-        if (member == null) {
-            throw new MemberNotFoundException(String.format("Could not find member with ID %s.", memberId));
-        }
-        Book book = bookRepository.findById(bookId).orElse(null);
-        if (book == null) {
-            throw new BookNotFoundException(String.format("Could not find book with ID %s.", bookId));
-        }
-
-        BookLoan bookLoan = bookLoanRepository.findByMemberAndBookAndReturnedDateIsNull(memberRepository.findById(memberId).orElse(null), bookRepository.findById(bookId).orElse(null));
-        if (bookLoan == null) {
-            throw new LoanNotFoundException(String.format("Could not find a record of this book id (%s) being loaned out to member id %s.", bookId, memberId));
-        }
-        bookLoan.setReturnedDate(new Date());
+        BookLoan bookLoan = bookLoanRepository.findById(bookLoanId).orElseThrow(LoanNotFoundException::new);
+        bookLoan.setReturnedDate(returnDate);
         return bookLoanRepository.save(bookLoan);
+    }
+
+    /**
+     *
+     * @return
+     */
+    @Override
+    public List<BookLoan> getBookLoans() {
+        return bookLoanRepository.findByReturnedDateIsNull();
+    }
+
+    /**
+     *
+     * @param id
+     * @return
+     */
+    @Override
+    public BookLoan getBookLoan(Long id) {
+        return bookLoanRepository.findById(id).orElseThrow(LoanNotFoundException::new);
     }
 
     /**

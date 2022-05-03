@@ -8,7 +8,7 @@ import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.Id;
 import javax.persistence.OneToOne;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Entity
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -26,7 +26,7 @@ public class BookLoan {
     @OneToOne
     private Member member;
 
-    private Date loanedDate;
+    private LocalDateTime loanedDate;
 
-    private Date returnedDate;
+    private LocalDateTime returnedDate;
 }
